@@ -1,0 +1,33 @@
+// 1. Define the boundary for the Czech Republic
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Landsat 8-day EVI data (2019 to 2025)
+var landsatEVI = ee.ImageCollection("LANDSAT/COMPOSITES/C02/T1_L2_8DAY_EVI")
+                    .filterDate('2019-01-01','2025-04-01') 
+                    .filterBounds(czech)
+                    .select('EVI');
+
+// 3. Calculate average EVI within the Czech region for each image
+var eviTimeSeries = landsatEVI.map(function(image) {
+
+// 4. Extract the image capture date
+  var date = ee.Date(image.get('system:time_start'));
+
+// 5. Format the date as 'YYYY-MM-dd'
+  var formattedDate = date.format('YYYY-MM-dd');
+  
+// 6. Calculate the average EVI within the Czech boundary
+  var meanEVI = image.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: czech.geometry(),
+    scale: 30,  // Set an appropriate resolution
+    maxPixels: 1e13
+  });
+// 7. Return a Feature containing the date and average EVI
+  return ee.Feature(null, {
+    'date': formattedDate,
+
+    'EVI': meanEVI.get('EVI')
+  });
+});
