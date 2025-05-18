@@ -31,3 +31,11 @@ var eviTimeSeries = landsatEVI.map(function(image) {
     'EVI': meanEVI.get('EVI')
   });
 });
+
+// 8. Export the data as a CSV file to Google Drive
+Export.table.toDrive({
+  collection: eviTimeSeries,
+  description: 'EVI_2019-2025',
+  folder: 'CZ_Satellite_Data',
+  fileFormat: 'CSV'
+});
