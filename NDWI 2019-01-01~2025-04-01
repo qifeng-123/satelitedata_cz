@@ -6,7 +6,7 @@ var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
 var ndwiCollection = ee.ImageCollection("LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDWI")
                         .filterDate('2019-01-01','2025-04-01')
                         .filterBounds(czech)
-                        .select('NDWI');  // 只取 NDWI 波段
+                        .select('NDWI'); 
 
 // 3. Extract the average NDWI for the Czech region from each image
 var ndwiTimeSeries = ndwiCollection.map(function(image) {
