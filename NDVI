@@ -1,0 +1,36 @@
+// 1. Load the boundary of the Czech Republic
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+
+// 2. Load the NDVI dataset (Landsat composites, 8-day interval)
+var ndviCollection = ee.ImageCollection("LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI")
+                        .filterDate('2019-01-01','2025-04-01')
+                        .filterBounds(czech)
+                        .select('NDVI');
+
+// 3. Extract the average NDVI for the Czech region from each image
+var ndviTimeSeries = ndviCollection.map(function(image) {
+  var meanNDVI = image.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: czech.geometry(),
+    scale: 30,
+    maxPixels: 1e13
+  });
+  
+  return ee.Feature(null, {
+    'date': image.date().format('YYYY-MM-dd'),
+    'NDVI': meanNDVI.get('NDVI')
+  });
+});
+
+//4. Optional: Remove empty values (images without NDVI data)）
+ndviTimeSeries = ndviTimeSeries.filter(ee.Filter.notNull(['NDVI']));
+
+//5. Export as CSV to Google Drive
+Export.table.toDrive({
+  collection: ndviTimeSeries,
+  description: 'NDVI_2019-2025',
+  folder: 'CZ_Satellite_Data', 
+  fileFormat: 'CSV'
+});
