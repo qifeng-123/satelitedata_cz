@@ -1,0 +1,54 @@
+// 1. Define Czech Republic boundary
+var Czech = ee.FeatureCollection('USDOS/LSIB_SIMPLE/2017')
+              .filter(ee.Filter.eq('country_na', 'Czechia'));
+Map.addLayer(Czech, {}, 'Czech');
+
+// 2. Import LST data from MODIS and filter by date and bounds
+var collection = ee.ImageCollection('MODIS/061/MOD11A2')
+  .select("LST_Day_1km")
+  .filterDate('2019-01-01', '2025-04-01')  // Filter date range
+  .filterBounds(Czech);  // Filter by Czechia boundary
+
+// 3. Convert MODIS LST values: multiply by 0.02 and subtract 273.15 (Kelvin to Celsius)
+var LSTDay = collection.map(function(img) {
+  return img.multiply(0.02).subtract(273.15)
+            .copyProperties(img, ['system:time_start', 'system:time_end']);
+}); 
+
+// 4. Display LST annual variation with a chart (DOY vs. Mean LST)
+var chart = ui.Chart.image.doySeriesByYear(LSTDay, 'LST_Day_1km', Czech, ee.Reducer.mean(), 1000);
+print(chart);
+
+// 5. Prepare the data to export (extract year, DOY, and mean LST)
+var lstData = LSTDay.map(function(img) {
+  // Get the image date and compute year and DOY (day of year)
+  var date = ee.Date(img.get('system:time_start'));
+  var year = date.get('year');
+ 
+  
+// 6. Format the date to 'YYYY-MM-dd'
+  var formattedDate = date.format('YYYY-MM-dd');
+  
+// 7. Compute the mean LST over the Czech region
+  var meanLST = img.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: Czech,
+    scale: 1000, 
+    bestEffort: true
+  }).get('LST_Day_1km');
+  
+// 8. Create a feature with the year, formatted date, DOY, and mean LST
+  return ee.Feature(null, {
+   
+    'formatted_date': formattedDate,  // Add formatted date
+    'mean_LST_C': meanLST
+  });
+});
+
+// 9. Export the FeatureCollection to CSV file in the 'CZ_Satellite_Data' folder on Google Drive
+Export.table.toDrive({
+  collection: lstData,
+  description: 'LST_2019-2025',
+  folder: 'CZ_Satellite_Data',  // Specify the folder here
+  fileFormat: 'CSV'
+});
