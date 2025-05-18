@@ -1,0 +1,43 @@
+// 1. Load the Czech Republic boundary
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load the VIIRS LAI/FPAR dataset (8-day composite)）
+var viirs = ee.ImageCollection("NASA/VIIRS/002/VNP15A2H")
+              .filterDate('2022-01-01', '2022-12-31')
+              .filterBounds(czech)
+              .select(['Lai', 'Fpar']);
+
+// 3. Scale the data (original values need to be multiplied by 0.1)
+var scaledViirs = viirs.map(function(image) {
+  return image.multiply(0.1)
+              .copyProperties(image, image.propertyNames());
+});
+
+// 4. Calculate regional mean and convert to Feature
+var laiFparTimeSeries = scaledViirs.map(function(image) {
+  var stats = image.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: czech.geometry(),
+    scale: 500,
+    maxPixels: 1e13
+  });
+
+  return ee.Feature(null, {
+    'date': image.date().format('YYYY-MM-dd'),
+    'LAI': stats.get('Lai'),
+    'FPAR': stats.get('Fpar')
+  });
+});
+
+//5.  Optional: Filter out invalid values
+laiFparTimeSeries = laiFparTimeSeries.filter(ee.Filter.notNull(['LAI', 'FPAR']));
+
+
+// 6. Export as CSV to Google Drive
+Export.table.toDrive({
+  collection: laiFparTimeSeries,
+  description: 'LAI_CZ_8days',
+  folder: 'CZ_Satellite_Data', 
+  fileFormat: 'CSV'
+});
