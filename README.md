@@ -1,7 +1,7 @@
 # This Repository Include 6 Indexes which are common use to estimate crop yields 
 
 - All Index are exported with Java script through Google Earth API, Each File contails Java script code
-- These 6 indexes are consolidated into 1 .xlsx file for fuher analysis use 
+- These 6 indexes are consolidated into 1 .xlsx file for analysis use 
 - Index Scope : form 2019-01-01 to 2025-04-01 with 8 day interval only for the  Czech Republic
 - General Information about these 6 Indexes as below table
 
