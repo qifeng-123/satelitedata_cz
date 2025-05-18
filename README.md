@@ -1,1 +1,11 @@
 # satelitedata_cz
+
+Google Earth Engine Data Dataset	Dataset	Provider	Bands	Unit	Pixel Size:	Description	Cadence	Data Cost	Time Consuming- Coding and validating	Data export Time consuming	Why It's Important for Crop Yield Estimation
+https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_COMPOSITES_C02_T1_L2_8DAY_NDWI	NDWI	Google	NDWI		 30 meters	"	
+Normalized Difference Water Index"	8 days	Free	60 minutes	5 min (Processing needed, Often needs cloud masking, corrections	Measures plant water content and soil moisture. Early water stress detection prevents yield losses.
+Landsat Collection 2 Tier 1 Level 2 8-Day NDVI Composite  |  Earth Engine Data Catalog  |  Google for Developers	NDVI	Google	NDVI		 30 meters	Normalized Difference Vegetation Index	8 days	Free	60 minutes	5 min (Processing needed, Often needs cloud masking, corrections	Measures green biomass and vegetation vigor. High NDVI = healthy plants = good yields. Low NDVI = stress or poor crop.
+https://developers.google.com/earth-engine/datasets/catalog/LANDSAT_COMPOSITES_C02_T1_L2_8DAY_EVI	EVI	Google	EVI		 30 meters	Enhanced Vegetation Index	8 days	Free	60 minutes	<1 min	Better than NDVI in dense forests or high biomass crops (like maize); less sensitive to atmospheric effects. Important for mature crop stages.
+https://developers.google.com/earth-engine/datasets/catalog/NASA_VIIRS_002_VNP15A2H	LAI	Google	Lai		 500 meters	"	
+Leaf Area Index"	8 days	Free	30 minutes	<1 min	Measures leaf area per ground area. Tells you how much "leaf machinery" exists for photosynthesis — a key driver for growth and grain filling.
+https://developers.google.com/earth-engine/datasets/catalog/NASA_VIIRS_002_VNP15A2H	FPAR	NASA LP DAAC at the USGS EROS Center	Fpar		 500 meters	Fraction of Photosynthetically Active Radiation.	8 days	Free	30 minutes	<1 min	Measures how much sunlight plants actually absorb for photosynthesis. Strong link to biomass accumulation and final yield.
+https://developers.google.com/earth-engine/datasets/catalog/MODIS_061_MOD11A2	LST	NASA LP DAAC at the USGS EROS Center	LST_Day_1km		1000 meters	Day land surface temperature	8 days	Free	60 minutes	<1 min	Surface temperature shows drought stress. Too hot = water stress = lower yields. Cool fields = healthy irrigated crops.
