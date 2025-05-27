@@ -22,3 +22,23 @@ var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1').filterDate(
     '2018-01-01', '2019-01-01').first();
 Map.addLayer(image, {}, 'EUCROPMAP 2018');
 Map.setCenter(10, 48, 4);
+
+
+//this works 
+
+// Load EUCROPMAP 2018 image
+var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first();
+
+// Define a bounding box over a small part of Czech Republic
+// Example: small area in Prague
+var czech_bbox = ee.Geometry.Rectangle([14.2, 49.9, 14.4, 50.1]);
+
+// Clip the image to the bounding box
+var clipped = image.clip(czech_bbox);
+
+// Add to map (no visualization parameters = default)
+Map.centerObject(czech_bbox, 12);
+Map.addLayer(clipped, {}, 'Czech Crops 2018 (Clipped)');
+
