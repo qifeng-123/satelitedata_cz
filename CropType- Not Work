@@ -1,0 +1,16 @@
+// Load EUCROPMAP 2018
+var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+              .filterDate('2018-01-01', '2019-01-01')
+              .first();
+
+// Load Czech Republic boundary
+var countries = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017");
+var czech = countries.filter(ee.Filter.eq('country_na', 'Czech Republic'));
+
+// Clip the image to Czech Republic
+var clipped = image.clip(czech);
+
+// Center map and display
+Map.setCenter(15, 49.8, 7);  // Zoomed-in view of Czech Republic
+Map.addLayer(clipped, {}, 'EUCROPMAP 2018 - Czech');
+Map.addLayer(czech, {color: 'red'}, 'Czech Boundary');
