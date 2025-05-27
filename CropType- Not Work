@@ -14,3 +14,11 @@ var clipped = image.clip(czech);
 Map.setCenter(15, 49.8, 7);  // Zoomed-in view of Czech Republic
 Map.addLayer(clipped, {}, 'EUCROPMAP 2018 - Czech');
 Map.addLayer(czech, {color: 'red'}, 'Czech Boundary');
+
+
+
+//only below works: 
+var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1').filterDate(
+    '2018-01-01', '2019-01-01').first();
+Map.addLayer(image, {}, 'EUCROPMAP 2018');
+Map.setCenter(10, 48, 4);
