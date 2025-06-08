@@ -1,31 +1,3 @@
-// Load EUCROPMAP 2018
-var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
-              .filterDate('2018-01-01', '2019-01-01')
-              .first();
-
-// Load Czech Republic boundary
-var countries = ee.FeatureCollection("USDOS/LSIB_SIMPLE/2017");
-var czech = countries.filter(ee.Filter.eq('country_na', 'Czech Republic'));
-
-// Clip the image to Czech Republic
-var clipped = image.clip(czech);
-
-// Center map and display
-Map.setCenter(15, 49.8, 7);  // Zoomed-in view of Czech Republic
-Map.addLayer(clipped, {}, 'EUCROPMAP 2018 - Czech');
-Map.addLayer(czech, {color: 'red'}, 'Czech Boundary');
-
-
-
-//only below works: 
-var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1').filterDate(
-    '2018-01-01', '2019-01-01').first();
-Map.addLayer(image, {}, 'EUCROPMAP 2018');
-Map.setCenter(10, 48, 4);
-
-
-//this works 
-
 // Load EUCROPMAP 2018 image
 var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
   .filterDate('2018-01-01', '2019-01-01')
@@ -33,7 +5,10 @@ var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
 
 // Define a bounding box over a small part of Czech Republic
 // Example: small area in Prague
-var czech_bbox = ee.Geometry.Rectangle([14.2, 49.9, 14.4, 50.1]);
+// 1. Load the boundary of the Czech Republic
+var czech_bbox = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
 
 // Clip the image to the bounding box
 var clipped = image.clip(czech_bbox);
@@ -41,4 +16,3 @@ var clipped = image.clip(czech_bbox);
 // Add to map (no visualization parameters = default)
 Map.centerObject(czech_bbox, 12);
 Map.addLayer(clipped, {}, 'Czech Crops 2018 (Clipped)');
-
