@@ -1,0 +1,102 @@
+// Load EUCROPMAP 2018 image
+var image = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first();
+
+// Define a bounding box over a small part of Czech Republic
+// Example: small area in Prague
+// 1. Load the boundary of the Czech Republic
+var czech_bbox = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+
+// Clip the image to the bounding box
+var clipped = image.clip(czech_bbox);
+
+// Add to map (no visualization parameters = default)
+Map.centerObject(czech_bbox, 12);
+Map.addLayer(clipped, {}, 'Czech Crops 2018 (Clipped)');
+
+
+
+
+
+
+
+
+
+
+
+
+--------------Maize NDVI
+
+
+///// 1. Load the boundary of the Czech Republic
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load EUCROPMAP 2018 and extract maize areas (class = 12)
+var cropmap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')  // ✅ Correct band
+  .clip(czech);
+
+// Maize class code (from EUCROPMAP documentation)
+var MAIZE_CLASS_CODE = 12;
+var maizeMask = cropmap.eq(MAIZE_CLASS_CODE);
+
+// 3. Load Sentinel-2 SR and calculate NDVI
+var s2 = ee.ImageCollection('COPERNICUS/S2_SR')
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .filter(ee.Filter.lt('CLOUDY_PIXEL_PERCENTAGE', 20))
+  .map(function(image) {
+    var ndvi = image.normalizedDifference(['B8', 'B4']).rename('NDVI');
+    return ndvi.copyProperties(image, ['system:time_start']);
+  });
+
+// 4. Calculate mean NDVI over maize areas
+var ndviOverMaize = s2.map(function(image) {
+  var maskedNDVI = image.updateMask(maizeMask);
+  var meanNDVI = maskedNDVI.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: czech.geometry(),
+    scale: 10,
+    maxPixels: 1e13
+  });
+
+  return ee.Feature(null, {
+    'date': ee.Date(image.get('system:time_start')).format('YYYY-MM-dd'),
+    'NDVI': meanNDVI.get('NDVI')
+  });
+});
+
+// 5. Filter out empty results (no NDVI)
+ndviOverMaize = ndviOverMaize.filter(ee.Filter.notNull(['NDVI']));
+
+// 6. Visualize time series chart
+var chart = ui.Chart.feature.byFeature(ndviOverMaize, 'date', ['NDVI'])
+  .setChartType('LineChart')
+  .setOptions({
+    title: 'NDVI over Maize Fields in Czech Republic (2018)',
+    hAxis: {title: 'Date'},
+    vAxis: {title: 'NDVI', minValue: 0, maxValue: 1},
+    lineWidth: 2,
+    pointSize: 3,
+    colors: ['green']
+  });
+print(chart);
+
+// 7. Export to Google Drive
+Export.table.toDrive({
+  collection: ndviOverMaize,
+  description: 'Maize_NDVI_CZ_2018_Sentinel2',
+  folder: 'CZ_Satellite_Data',
+  fileFormat: 'CSV'
+});
+
+// 8. Optional: Visualize maize areas
+Map.centerObject(czech, 7);
+Map.addLayer(maizeMask.updateMask(maizeMask), {palette: ['yellow']}, 'Maize Fields (2018)');
+
