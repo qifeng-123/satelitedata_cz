@@ -41,3 +41,103 @@ var colorizedVis = {
 // 6. Center map and add layer
 Map.centerObject(czech, 7);
 Map.addLayer(ndviMedian.clip(czech), colorizedVis, 'Median NDVI 2018');
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+---------------------------------
+NDVI for maize 
+
+
+
+// 1. Load the boundary of the Czech Republic
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load EUCROPMAP 2018 crop classification and clip
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')
+  .clip(czech);
+
+// 3. Load NDVI dataset for 2018 over Czech Republic
+var ndviCollection = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI')
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .select('NDVI');
+
+// 4. Mask function to keep only maize pixels (class 216)
+var maskMaize = function(image) {
+  var maizeMask = cropMap.eq(216);
+  return image.updateMask(maizeMask)
+              .set('system:time_start', image.get('system:time_start'));
+};
+
+// 5. Apply maize mask to all NDVI images
+var maizeNDVIcollection = ndviCollection.map(maskMaize);
+
+// 6. Define region geometry for reduction (Czech Republic)
+var region = czech.geometry();
+
+// 7. Calculate mean NDVI over maize pixels for each image with scale and maxPixels fix
+var meanNDVIperImage = maizeNDVIcollection.map(function(image) {
+  var meanDict = image.reduceRegion({
+    reducer: ee.Reducer.mean(),
+    geometry: region,
+    scale: 500,          // coarser scale to reduce pixels
+    maxPixels: 1e13,     // increase maxPixels
+    bestEffort: true     // allow GEE to reduce resolution if needed
+  });
+  return image.set('mean_NDVI', meanDict.get('NDVI'));
+});
+
+// 8. Create a time series chart
+var chart = ui.Chart.image.series({
+  imageCollection: meanNDVIperImage,
+  region: region,
+  reducer: ee.Reducer.mean(),
+  scale: 500,
+  xProperty: 'system:time_start'
+})
+.setOptions({
+  title: 'NDVI Time Series for Maize (2018, Czech Republic)',
+  vAxis: {title: 'Mean NDVI', minValue: 0, maxValue: 1},
+  hAxis: {title: 'Date', format: 'MMM-yyyy', gridlines: {count: 12}},
+  lineWidth: 2,
+  pointSize: 4,
+  series: {0: {color: 'green'}}
+});
+
+print(chart);
+
+// 9. Visualize maize NDVI median on map for context
+var maizeNDVImedian = maizeNDVIcollection.median();
+Map.centerObject(czech, 7);
+Map.addLayer(cropMap, {}, 'Czech Crops 2018');
+Map.addLayer(maizeNDVImedian, {min: 0, max: 1, palette: ['white', 'green']}, 'Median Maize NDVI');
+
+
+
+
+
+
+
+
+
+
