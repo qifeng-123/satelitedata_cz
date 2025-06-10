@@ -1,0 +1,43 @@
+// 1. Load the boundary of the Czech Republic
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+              .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// Load EUCROPMAP 2018
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification');
+
+
+// Clip to country
+var clippedCropMap = cropMap.clip(czech);
+Map.centerObject(czech, 7);
+Map.addLayer(clippedCropMap, {}, 'Czech Crops 2018');
+
+
+
+// 2. Load NDVI dataset for 2017 over Czech Republic
+var dataset = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI')
+                  .filterDate('2018-01-01', '2019-01-01')
+                  .filterBounds(czech);
+
+// 3. Select NDVI band
+var colorized = dataset.select('NDVI');
+
+// 4. Compute median NDVI image
+var ndviMedian = colorized.median();
+
+// 5. Visualization parameters
+var colorizedVis = {
+  min: 0,
+  max: 1,
+  palette: [
+    'ffffff', 'ce7e45', 'df923d', 'f1b555', 'fcd163', '99b718', '74a901',
+    '66a000', '529400', '3e8601', '207401', '056201', '004c00', '023b01',
+    '012e01', '011d01', '011301'
+  ],
+};
+
+// 6. Center map and add layer
+Map.centerObject(czech, 7);
+Map.addLayer(ndviMedian.clip(czech), colorizedVis, 'Median NDVI 2018');
