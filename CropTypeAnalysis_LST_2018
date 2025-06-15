@@ -1,1 +1,90 @@
+// 1. Load Czech Republic boundary
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load EUCROPMAP 2018 crop classification, clipped to Czech Republic
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')
+  .clip(czech);
+
+// 3. Load MODIS LST data for 2018
+var lstCollection = ee.ImageCollection('MODIS/061/MOD11A2')
+  .filterDate('2018-01-01', '2018-12-31')
+  .select('LST_Day_1km');
+
+// 4. Define crop classes and colors
+var cropClasses = {
+  'Common wheat': 211,
+  'Barley': 213,
+  'Sugar Beet': 222,
+  'Rape': 232,
+  'Maize': 216
+};
+
+var cropColors = {
+  'Common wheat': 'brown',
+  'Barley': 'yellow',
+  'Sugar Beet': 'red',
+  'Rape': 'purple',
+  'Maize': 'green'
+};
+
+// 5. Function: Mask and compute mean LST (°C) per crop per date
+function getTimeSeries(cropName, cropCode) {
+  var masked = lstCollection.map(function(image) {
+    var cropMask = cropMap.eq(cropCode);
+    var maskedImg = image.updateMask(cropMask);
+    var meanLST = maskedImg.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: czech.geometry(),
+      scale: 1000,
+      maxPixels: 1e13
+    });
+    var kelvin = ee.Number(meanLST.get('LST_Day_1km')).multiply(0.02);
+    var celsius = kelvin.subtract(273.15);
+    return ee.Feature(null, {
+      'date': image.date().format('YYYY-MM-dd'),
+      'LST_C': celsius,
+      'crop': cropName
+    });
+  }).filter(ee.Filter.notNull(['LST_C']));
+  return masked;
+}
+
+// 6. Merge time series for all crops
+var allSeries = ee.FeatureCollection([]);
+for (var name in cropClasses) {
+  var code = cropClasses[name];
+  var series = getTimeSeries(name, code);
+  allSeries = allSeries.merge(series);
+}
+
+// 7. Create chart grouped by crop type
+var chart = ui.Chart.feature.groups({
+  features: allSeries,
+  xProperty: 'date',
+  yProperty: 'LST_C',
+  seriesProperty: 'crop'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'Mean MODIS LST by Crop Type (2018, Czech Republic)',
+  hAxis: {title: 'Date', format: 'MMM yyyy'},
+  vAxis: {title: 'LST (°C)'},
+  lineWidth: 2,
+  pointSize: 4,
+  series: Object.keys(cropColors).reduce(function(obj, crop, i) {
+    obj[i] = {color: cropColors[crop]};
+    return obj;
+  }, {}),
+  legend: {position: 'right'}
+});
+
+print(chart);
+
+// Optional: Map preview of EUCROPMAP
+Map.centerObject(czech, 7);
+Map.addLayer(cropMap, {min: 210, max: 240, palette: Object.values(cropColors)}, 'Czech Crops 2018');
 
