@@ -1,0 +1,123 @@
+// 1. Load Czech Republic boundary
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load EUCROPMAP 2018 crop classification, clipped to Czech Republic
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')
+  .clip(czech);
+
+// 3. Load NASA VIIRS VNP15A2H collection (8-day FPAR and LAI)
+var viirsCollection = ee.ImageCollection("NASA/VIIRS/002/VNP15A2H")
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .select(['Fpar', 'Lai']);  // Correct lowercase bands
+
+// 4. Define crop classes and colors
+var cropClasses = {
+  'Common wheat': 211,
+  'Barley': 213,
+  'Sugar Beet': 222,
+  'Rape': 232,
+  'Maize': 216
+};
+
+var cropColors = {
+  'Common wheat': 'brown',
+  'Barley': 'yellow',
+  'Sugar Beet': 'red',
+  'Rape': 'purple',
+  'Maize': 'green'
+};
+
+// 5. Function to mask VIIRS image by crop code
+function maskCrop(image, cropCode) {
+  var mask = cropMap.eq(cropCode);
+  return image.updateMask(mask);
+}
+
+// 6. Helper function to generate a FeatureCollection for a given crop and variable
+function getTimeSeries(collection, cropCode, cropName, bandName) {
+  var masked = collection.map(function(img) {
+    return maskCrop(img, cropCode)
+      .set('system:time_start', img.get('system:time_start'));
+  });
+
+  return masked.map(function(img) {
+    var stats = img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: czech.geometry(),
+      scale: 500,
+      maxPixels: 1e13,
+      bestEffort: true
+    });
+    return ee.Feature(null, {
+      'date': img.date().format('YYYY-MM-dd'),
+      'value': stats.get(bandName),
+      'crop': cropName
+    });
+  }).filter(ee.Filter.notNull(['value']));
+}
+
+// 7. Build time series for both FPAR and LAI
+var fparSeries = [];
+var laiSeries = [];
+
+for (var cropName in cropClasses) {
+  var code = cropClasses[cropName];
+  fparSeries.push(getTimeSeries(viirsCollection, code, cropName, 'Fpar'));
+  laiSeries.push(getTimeSeries(viirsCollection, code, cropName, 'Lai'));
+}
+
+var allFPAR = ee.FeatureCollection(fparSeries).flatten();
+var allLAI = ee.FeatureCollection(laiSeries).flatten();
+
+// 8. Chart: FPAR
+var fparChart = ui.Chart.feature.groups({
+  features: allFPAR,
+  xProperty: 'date',
+  yProperty: 'value',
+  seriesProperty: 'crop'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'FPAR Time Series for Multiple Crops (2018, Czech Republic)',
+  hAxis: {title: 'Date'},
+  vAxis: {title: 'Mean FPAR', minValue: 0, maxValue: 1},
+  lineWidth: 2,
+  pointSize: 4,
+  series: {
+    0: {color: cropColors['Common wheat']},
+    1: {color: cropColors['Barley']},
+    2: {color: cropColors['Sugar Beet']},
+    3: {color: cropColors['Rape']},
+    4: {color: cropColors['Maize']}
+  }
+});
+print(fparChart);
+
+// 9. Chart: LAI
+var laiChart = ui.Chart.feature.groups({
+  features: allLAI,
+  xProperty: 'date',
+  yProperty: 'value',
+  seriesProperty: 'crop'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'LAI Time Series for Multiple Crops (2018, Czech Republic)',
+  hAxis: {title: 'Date'},
+  vAxis: {title: 'Mean LAI', minValue: 0, maxValue: 10},
+  lineWidth: 2,
+  pointSize: 4,
+  series: {
+    0: {color: cropColors['Common wheat']},
+    1: {color: cropColors['Barley']},
+    2: {color: cropColors['Sugar Beet']},
+    3: {color: cropColors['Rape']},
+    4: {color: cropColors['Maize']}
+  }
+});
+print(laiChart);
