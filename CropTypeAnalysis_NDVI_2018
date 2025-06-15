@@ -18,7 +18,6 @@ var ndviCollection = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI'
 // 4. Define crop classes and colors
 var cropClasses = {
   'Common wheat': 211,
- 
   'Barley': 213,
   'Sugar Beet': 222,
   'Rape': 232,
@@ -27,75 +26,74 @@ var cropClasses = {
 
 var cropColors = {
   'Common wheat': 'brown',
-
   'Barley': 'yellow',
   'Sugar Beet': 'red',
   'Rape': 'purple',
   'Maize': 'green'
 };
 
-// 5. Function: Mask NDVI image for a specific crop code
+// 5. Function to mask NDVI image for a crop code
 function maskCrop(image, cropCode) {
   var mask = cropMap.eq(cropCode);
-  return image.updateMask(mask)
-              .set('system:time_start', image.get('system:time_start'));
+  return image.updateMask(mask).set('system:time_start', image.get('system:time_start'));
 }
 
-// 6. Function: Calculate mean NDVI over crop pixels for each image
-function calcMeanNDVI(collection) {
-  return collection.map(function(image) {
-    var meanDict = image.reduceRegion({
+// 6. Function to generate a FeatureCollection for a crop
+function getNDVIFeatures(cropCode, cropName) {
+  var masked = ndviCollection.map(function(img) {
+    return maskCrop(img, cropCode);
+  });
+
+  var features = masked.map(function(img) {
+    var stat = img.reduceRegion({
       reducer: ee.Reducer.mean(),
       geometry: czech.geometry(),
       scale: 500,
       maxPixels: 1e13,
       bestEffort: true
     });
-    return image.set('mean_NDVI', meanDict.get('NDVI'));
-  }).filter(ee.Filter.notNull(['mean_NDVI']));
+    return ee.Feature(null, {
+      'date': img.date().format('YYYY-MM-dd'),
+      'NDVI': stat.get('NDVI'),
+      'crop': cropName
+    });
+  });
+
+  return features.filter(ee.Filter.notNull(['NDVI']));
 }
 
-// 7. Loop over each crop, compute NDVI time series and print chart
-for (var cropName in cropClasses) {
-  var cropCode = cropClasses[cropName];
-  
-  // Mask NDVI collection to crop pixels
-  var cropNDVIcol = ndviCollection.map(function(img) {
-    return maskCrop(img, cropCode);
-  });
-  
-  // Calculate mean NDVI per image and filter nulls
-  var meanNDVIcol = calcMeanNDVI(cropNDVIcol);
-  
-  // Print chart for this crop
-  var chart = ui.Chart.image.series({
-    imageCollection: meanNDVIcol,
-    region: czech.geometry(),
-    reducer: ee.Reducer.mean(),
-    scale: 500,
-    xProperty: 'system:time_start'
-  })
-  .setOptions({
-    title: 'NDVI Time Series for ' + cropName + ' (2018, Czech Republic)',
-    vAxis: {title: 'Mean NDVI', minValue: 0, maxValue: 1},
-    hAxis: {title: 'Date', format: 'MMM-yyyy', gridlines: {count: 12}},
-    lineWidth: 2,
-    pointSize: 4,
-    series: {0: {color: cropColors[cropName]}}
-  });
-  
-  print(chart);
-  
-  // Export NDVI time series table CSV
-  Export.table.toDrive({
-    collection: meanNDVIcol,
-    description: 'NDVI_TimeSeries_' + cropName.replace(/ /g, '_') + '_2018_Czech',
-    fileFormat: 'CSV',
-    selectors: ['system:time_start', 'mean_NDVI']
-  });
+// 7. Combine NDVI features for all crops
+var allNDVI = [];
+for (var name in cropClasses) {
+  allNDVI.push(getNDVIFeatures(cropClasses[name], name));
 }
+var ndviFeatureCollection = ee.FeatureCollection(allNDVI).flatten();
 
-// 8. Visualize crop classification map
+// 8. Create unified NDVI time series chart
+var ndviChart = ui.Chart.feature.groups({
+  features: ndviFeatureCollection,
+  xProperty: 'date',
+  yProperty: 'NDVI',
+  seriesProperty: 'crop'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'NDVI Time Series for Multiple Crops (2018, Czech Republic)',
+  hAxis: {title: 'Date'},
+  vAxis: {title: 'Mean NDVI', minValue: 0, maxValue: 1},
+  lineWidth: 2,
+  pointSize: 3,
+  series: {
+    0: {color: cropColors['Common wheat']},
+    1: {color: cropColors['Barley']},
+    2: {color: cropColors['Sugar Beet']},
+    3: {color: cropColors['Rape']},
+    4: {color: cropColors['Maize']}
+  }
+});
+print(ndviChart);
+
+// 9. Visualize crop classification map
 var cropVisParams = {
   min: 210,
   max: 240,
@@ -104,14 +102,14 @@ var cropVisParams = {
 Map.centerObject(czech, 7);
 Map.addLayer(cropMap, cropVisParams, 'Czech Crops 2018');
 
-// 9. Visualize median NDVI for maize as example
+// 10. Visualize median NDVI for maize
 var maizeNDVIcol = ndviCollection.map(function(img) {
   return maskCrop(img, cropClasses['Maize']);
 });
 var maizeNDVImedian = maizeNDVIcol.median();
 Map.addLayer(maizeNDVImedian, {min: 0, max: 1, palette: ['white', 'green']}, 'Median Maize NDVI');
 
-// 10. Export median maize NDVI image
+// 11. Export median maize NDVI image
 Export.image.toDrive({
   image: maizeNDVImedian,
   description: 'Median_Maize_NDVI_2018_Czech',
@@ -119,88 +117,4 @@ Export.image.toDrive({
   region: czech.geometry(),
   maxPixels: 1e13
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
------------- only data
-// 1. Load Czech Republic boundary
-var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
-  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
-
-// 2. Load EUCROPMAP 2018 crop classification, clipped to Czech Republic
-var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
-  .filterDate('2018-01-01', '2019-01-01')
-  .first()
-  .select('classification')
-  .clip(czech);
-
-// 3. Load 8-day Landsat NDVI composites for 2018 over Czech Republic
-var ndviCollection = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI')
-  .filterDate('2018-01-01', '2018-12-31')
-  .filterBounds(czech)
-  .select('NDVI');
-
-// 4. Define crop classes
-var cropClasses = {
-  'Common wheat': 211,
-  'Barley': 213,
-  'Sugar Beet': 222,
-  'Rape': 232,
-  'Maize': 216
-};
-
-// 5. Function to compute mean NDVI over a crop mask
-function calcMeanNDVI(collection, cropCode, cropName) {
-  return collection.map(function(image) {
-    var masked = image.updateMask(cropMap.eq(cropCode));
-    var meanDict = masked.reduceRegion({
-      reducer: ee.Reducer.mean(),
-      geometry: czech.geometry(),
-      scale: 500,
-      maxPixels: 1e13,
-      bestEffort: true
-    });
-    return ee.Feature(null, {
-      'date': ee.Date(image.get('system:time_start')).format('YYYY-MM-dd'),
-      'crop': cropName,
-      'NDVI': meanDict.get('NDVI')
-    });
-  }).filter(ee.Filter.notNull(['NDVI']));
-}
-
-// 6. Loop through crop types and generate feature collections
-var allFeatures = [];
-
-for (var cropName in cropClasses) {
-  var cropCode = cropClasses[cropName];
-  var cropFeatures = calcMeanNDVI(ndviCollection, cropCode, cropName);
-  allFeatures.push(cropFeatures);
-}
-
-// 7. Merge all features into one FeatureCollection
-var merged = ee.FeatureCollection(allFeatures).flatten();
-
-// 8. Export the CSV
-Export.table.toDrive({
-  collection: merged,
-  description: 'Czech_Crop_NDVI_2018_CSV',
-  folder: 'CZ_Satellite_Data',
-  fileFormat: 'CSV',
-  selectors: ['date', 'crop', 'NDVI']
-});
-
 
