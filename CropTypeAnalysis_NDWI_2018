@@ -1,1 +1,83 @@
+// 1. Load Czech Republic boundary
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
 
+// 2. Load EUCROPMAP 2018 crop classification
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')
+  .clip(czech);
+
+// 3. Load 8-day Landsat NDWI composite for 2018
+var ndwiCollection = ee.ImageCollection("LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDWI")
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .select('NDWI');
+
+// 4. Define crop classes and colors
+var cropClasses = {
+  'Common wheat': 211,
+  'Barley': 213,
+  'Sugar Beet': 222,
+  'Rape': 232,
+  'Maize': 216
+};
+
+var cropColors = {
+  'Common wheat': 'brown',
+  'Barley': 'yellow',
+  'Sugar Beet': 'red',
+  'Rape': 'purple',
+  'Maize': 'green'
+};
+
+// 5. Function: Mask NDWI image by crop and compute mean
+function getNDWISeries(cropName, cropCode) {
+  var series = ndwiCollection.map(function(image) {
+    var masked = image.updateMask(cropMap.eq(cropCode));
+    var mean = masked.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: czech.geometry(),
+      scale: 500,
+      maxPixels: 1e13
+    });
+    return ee.Feature(null, {
+      'date': image.date().format('YYYY-MM-dd'),
+      'NDWI': mean.get('NDWI'),
+      'crop': cropName
+    });
+  }).filter(ee.Filter.notNull(['NDWI']));
+  return series;
+}
+
+// 6. Build full dataset
+var allSeries = ee.FeatureCollection([]);
+for (var name in cropClasses) {
+  var code = cropClasses[name];
+  var series = getNDWISeries(name, code);
+  allSeries = allSeries.merge(series);
+}
+
+// 7. Chart: NDWI by crop
+var chart = ui.Chart.feature.groups({
+  features: allSeries,
+  xProperty: 'date',
+  yProperty: 'NDWI',
+  seriesProperty: 'crop'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: 'NDWI Time Series by Crop Type (2018, Czech Republic)',
+  hAxis: {title: 'Date', format: 'MMM yyyy'},
+  vAxis: {title: 'Mean NDWI', minValue: -0.2, maxValue: 1},
+  lineWidth: 2,
+  pointSize: 4,
+  series: Object.keys(cropColors).reduce(function(obj, crop, i) {
+    obj[i] = {color: cropColors[crop]};
+    return obj;
+  }, {}),
+  legend: {position: 'right'}
+});
+
+print(chart);
