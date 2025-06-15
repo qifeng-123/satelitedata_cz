@@ -4,7 +4,7 @@ var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
 
 // 2. Load the VIIRS LAI/FPAR dataset (8-day composite)）
 var viirs = ee.ImageCollection("NASA/VIIRS/002/VNP15A2H")
-              .filterDate('2022-01-01', '2022-12-31')
+              .filterDate('2019-01-01', '2025-04-01')
               .filterBounds(czech)
               .select(['Lai', 'Fpar']);
 
