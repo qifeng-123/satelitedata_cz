@@ -36,11 +36,11 @@ var cropColors = {
 function maskCrop(image, cropCode) {
   var mask = cropMap.eq(cropCode);
   return image.updateMask(mask)
-              .set('system:time_start', image.get('system:time_start'));
+              .copyProperties(image, ['system:time_start']);
 }
 
 // 6. Function: Calculate mean EVI over crop pixels for each image
-function calcMeanEVI(collection) {
+function calcMeanEVI(collection, cropName) {
   return collection.map(function(image) {
     var meanDict = image.reduceRegion({
       reducer: ee.Reducer.mean(),
@@ -49,43 +49,47 @@ function calcMeanEVI(collection) {
       maxPixels: 1e13,
       bestEffort: true
     });
-    return image.set('mean_EVI', meanDict.get('EVI'));
+    return ee.Feature(null, {
+      'system:time_start': image.get('system:time_start'),
+      'mean_EVI': meanDict.get('EVI'),
+      'crop': cropName
+    });
   }).filter(ee.Filter.notNull(['mean_EVI']));
 }
 
-// 7. Loop over each crop, compute EVI time series, export CSV
-for (var cropName in cropClasses) {
+// 7. Loop using Object.keys().forEach()
+var allSeries = [];
+
+Object.keys(cropClasses).forEach(function(cropName) {
   var cropCode = cropClasses[cropName];
-  
+
   // Mask EVI collection to crop pixels
   var cropEVIcol = eviCollection.map(function(img) {
     return maskCrop(img, cropCode);
   });
-  
-  // Calculate mean EVI per image
-  var meanEVIcol = calcMeanEVI(cropEVIcol);
-  
-  // Chart: Add crop name to series label
-  var chart = ui.Chart.image.series({
-    imageCollection: meanEVIcol,
-    region: czech.geometry(),
-    reducer: ee.Reducer.mean(),
-    scale: 500,
-    xProperty: 'system:time_start'
-  }).setChartType('LineChart')
-    .setOptions({
-      title: 'EVI Time Series (2018, Czech Republic)',
-      hAxis: {title: 'Date', format: 'MMM-yyyy', gridlines: {count: 12}},
-      vAxis: {title: 'Mean EVI', minValue: 0, maxValue: 1},
-      lineWidth: 2,
-      pointSize: 4,
-      series: {
-        0: {
-          color: cropColors[cropName],
-          labelInLegend: cropName  // <== This sets the legend label
-        }
-      },
-      legend: {position: 'right'}
-    });
-  
-  print(chart);
+
+  // Calculate mean EVI per image, return as FeatureCollection
+  var meanFeatures = calcMeanEVI(cropEVIcol, cropName);
+  allSeries.push(meanFeatures);
+});
+
+// 8. Flatten all features and chart
+var allFeatures = ee.FeatureCollection(allSeries).flatten();
+
+var chart = ui.Chart.feature.groups({
+  features: allFeatures,
+  xProperty: 'system:time_start',
+  yProperty: 'mean_EVI',
+  seriesProperty: 'crop'
+}).setChartType('LineChart')
+  .setOptions({
+    title: 'EVI Time Series by Crop (2018, Czech Republic)',
+    hAxis: {title: 'Date', format: 'MMM-yyyy', gridlines: {count: 12}},
+    vAxis: {title: 'Mean EVI', minValue: 0, maxValue: 1},
+    lineWidth: 2,
+    pointSize: 4,
+    legend: {position: 'right'}
+  });
+
+print(chart);
+
