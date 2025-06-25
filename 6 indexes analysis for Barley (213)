@@ -1,0 +1,130 @@
+// 1. Load Czech Republic boundary
+var czech = ee.FeatureCollection("FAO/GAUL/2015/level0")
+  .filter(ee.Filter.eq('ADM0_NAME', 'Czech Republic'));
+
+// 2. Load EUCROPMAP 2018 crop classification
+var cropMap = ee.ImageCollection('JRC/D5/EUCROPMAP/V1')
+  .filterDate('2018-01-01', '2019-01-01')
+  .first()
+  .select('classification')
+  .clip(czech);
+
+// 3. Define crop code and name for Barley
+var cropCode = 213;
+var cropName = 'Barley';
+
+// 4. Function to mask image by crop and select specific band
+function maskCrop(img, bandName) {
+  return ee.Image(img).select(bandName)
+    .updateMask(cropMap.eq(cropCode))
+    .copyProperties(img, ['system:time_start']);
+}
+
+// 5. Function to compute normalized value and label it
+function makeSeries(collection, bandName, indexType, scale) {
+  return collection.map(function(img) {
+    var mean = img.reduceRegion({
+      reducer: ee.Reducer.mean(),
+      geometry: czech.geometry(),
+      scale: scale,
+      maxPixels: 1e13,
+      bestEffort: true
+    });
+
+    var raw = indexType === 'LST'
+      ? ee.Number(mean.get(bandName)).multiply(0.02).subtract(273.15)
+      : ee.Number(mean.get(bandName));
+
+    // Normalize and relabel
+    var normalized, label;
+    if (indexType === 'LST') {
+      normalized = raw.divide(40);
+      label = 'LST (÷40°C)';
+    } else if (indexType === 'LAI') {
+      normalized = raw.divide(6);
+      label = 'LAI (÷6)';
+    } else {
+      normalized = raw;
+      label = indexType + ' (raw)';
+    }
+
+    return ee.Feature(null, {
+      'date': img.date().format('YYYY-MM-dd'),
+      'value': normalized,
+      'indexType': label
+    });
+  }).filter(ee.Filter.notNull(['value']));
+}
+
+// 6. Load and prepare datasets
+
+// EVI
+var evi = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_EVI')
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .map(function(img) { return maskCrop(img, 'EVI'); });
+
+// NDVI
+var ndvi = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDVI')
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .map(function(img) { return maskCrop(img, 'NDVI'); });
+
+// NDWI
+var ndwi = ee.ImageCollection('LANDSAT/COMPOSITES/C02/T1_L2_8DAY_NDWI')
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech)
+  .map(function(img) { return maskCrop(img, 'NDWI'); });
+
+// VIIRS: LAI and FPAR
+var viirs = ee.ImageCollection("NASA/VIIRS/002/VNP15A2H")
+  .filterDate('2018-01-01', '2018-12-31')
+  .filterBounds(czech);
+
+var lai = viirs.map(function(img) { return maskCrop(img, 'Lai'); });
+var fpar = viirs.map(function(img) { return maskCrop(img, 'Fpar'); });
+
+// MODIS: LST
+var lst = ee.ImageCollection('MODIS/061/MOD11A2')
+  .filterDate('2018-01-01', '2018-12-31')
+  .select('LST_Day_1km')
+  .filterBounds(czech)
+  .map(function(img) { return maskCrop(img, 'LST_Day_1km'); });
+
+// 7. Create feature collections for each index
+var eviSeries = makeSeries(evi, 'EVI', 'EVI', 500);
+var ndviSeries = makeSeries(ndvi, 'NDVI', 'NDVI', 500);
+var ndwiSeries = makeSeries(ndwi, 'NDWI', 'NDWI', 500);
+var laiSeries = makeSeries(lai, 'Lai', 'LAI', 500);
+var fparSeries = makeSeries(fpar, 'Fpar', 'FPAR', 500);
+var lstSeries = makeSeries(lst, 'LST_Day_1km', 'LST', 1000);
+
+// 8. Merge all indices into one FeatureCollection
+var allSeries = ee.FeatureCollection(eviSeries)
+  .merge(ndviSeries)
+  .merge(ndwiSeries)
+  .merge(laiSeries)
+  .merge(fparSeries)
+  .merge(lstSeries);
+
+// 9. Create chart
+var chart = ui.Chart.feature.groups({
+  features: allSeries,
+  xProperty: 'date',
+  yProperty: 'value',
+  seriesProperty: 'indexType'
+})
+.setChartType('LineChart')
+.setOptions({
+  title: cropName + ' - Normalized Multi-Index Time Series (2018)',
+  hAxis: {title: 'Date'},
+  vAxis: {title: 'Normalized Index Value (0–1)'},
+  lineWidth: 2,
+  pointSize: 4,
+  legend: {position: 'right'}
+});
+
+print(chart);
+
+// Optional: center map for context
+Map.centerObject(czech, 7);
